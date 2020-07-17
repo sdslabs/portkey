@@ -3,8 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"strconv"
-	"time"
 
 	"github.com/pion/quic"
 	"github.com/pion/webrtc/v2"
@@ -22,7 +20,11 @@ type Signal struct {
 
 func main() {
 	local := flag.Bool("local", false, "for testing on localhost server")
-	key := flag.String("key", "", "key for connection")
+	key := flag.String("k", "", "key for connection")
+	receive := flag.Bool("r", false, "set if want to receive files")
+	sendPath := flag.String("s", "", "absolute path of file/directory to send")
+	receivePath := flag.String("rpath", "", "absolute path of directory to save files in, pwd by default")
+
 	flag.Parse()
 	if *local {
 		serverURL = "http://localhost:8080/"
@@ -66,13 +68,12 @@ func main() {
 		panic(err)
 	}
 
-	qt.OnBidirectionalStream(func(stream *quic.BidirectionalStream) {
-		fmt.Printf("New stream %d\n", stream.StreamID())
-
-		go ReadLoop(stream)
-
-		go WriteLoop(stream, isOffer)
-	})
+	if *receive {
+		qt.OnBidirectionalStream(func(stream *quic.BidirectionalStream) {
+			fmt.Printf("New stream %d\n", stream.StreamID())
+			go ReadLoop(stream, *receivePath) 
+		})
+	}
 
 	s := Signal{
 		ICECandidates:  iceCandidates,
@@ -107,56 +108,16 @@ func main() {
 		panic(err)
 	}
 
-	stream, err := qt.CreateBidirectionalStream()
-	if err != nil {
-		panic(err)
+	if *sendPath != "" {
+		stream, err := qt.CreateBidirectionalStream()
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("\n\n------------Connection established------------")
+		go WriteLoop(stream, *sendPath)
 	}
-	fmt.Println("\n\n------------Connection established------------")
-	go ReadLoop(stream)
-	go WriteLoop(stream, isOffer)
 
 	select {}
 }
 
-func ReadLoop(s *quic.BidirectionalStream) {
-	for {
-		buffer := make([]byte, messageSize)
-		params, err := s.ReadInto(buffer)
-		if err != nil {
-			panic(err)
-		}
 
-		fmt.Printf("Message from stream '%d': %s\n", s.StreamID(), string(buffer[:params.Amount]))
-	}
-}
-
-func WriteLoop(s *quic.BidirectionalStream, isOffer bool) {
-	i := 0
-	for range time.NewTicker(1 * time.Second).C {
-		if isOffer {
-			message := "so this shit works? " + strconv.Itoa(i)
-			i++
-			fmt.Printf("Sending %s \n", message)
-
-			data := quic.StreamWriteParameters{
-				Data: []byte(message),
-			}
-			err := s.Write(data)
-			if err != nil {
-				panic(err)
-			}
-		} else {
-			message := "i can send too " + strconv.Itoa(i)
-			i++
-			fmt.Printf("Sending %s \n", message)
-
-			data := quic.StreamWriteParameters{
-				Data: []byte(message),
-			}
-			err := s.Write(data)
-			if err != nil {
-				panic(err)
-			}
-		}
-	}
-}
