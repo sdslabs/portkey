@@ -3,7 +3,6 @@ package connection
 import (
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/pion/quic"
 	"github.com/pion/webrtc/v2"
@@ -58,9 +57,9 @@ func Connect(key string, sendPath string, receive bool, receivePath string) {
 
 	receiveErr := make(chan error)
 	if receive {
+		wg.Add(1)
 		qt.OnBidirectionalStream(func(stream *quic.BidirectionalStream) {
-			wg.Add(1)
-			fmt.Println("New stream received")
+			fmt.Printf("New stream received: streamid = %d\n", stream.StreamID())
 			go transfer.ReadLoop(stream, receivePath, receiveErr, &wg)
 		})
 	}
@@ -101,19 +100,18 @@ func Connect(key string, sendPath string, receive bool, receivePath string) {
 		log.Fatal(err)
 	}
 
+	fmt.Println("\n\n------------Connection established------------")
+
 	sendErr := make(chan error)
 	if sendPath != "" {
 		stream, err := qt.CreateBidirectionalStream()
 		if err != nil {
 			log.Fatal(err)
 		}
+		fmt.Printf("New stream created: streamid = %d\n", stream.StreamID())
 		wg.Add(1)
-		fmt.Println("\n\n------------Connection established------------")
 		go transfer.WriteLoop(stream, sendPath, sendErr, &wg)
 	}
+
 	wg.Wait()
-	if receive {
-		time.Sleep(time.Second)
-		wg.Wait()
-	}
 }

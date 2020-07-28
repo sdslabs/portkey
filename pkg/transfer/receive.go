@@ -1,6 +1,7 @@
 package transfer
 
 import (
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -45,5 +46,8 @@ func ReadLoop(stream *quic.BidirectionalStream, receivePath string, receiveErr c
 	}
 
 	err = unzip(zipfile, receivePath)
+	if err == nil {
+		fmt.Printf("Finished reading from Stream %d\n", stream.StreamID())
+	}
 	return err
 }

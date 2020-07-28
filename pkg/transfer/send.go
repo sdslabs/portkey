@@ -1,6 +1,7 @@
 package transfer
 
 import (
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -47,6 +48,7 @@ func WriteLoop(stream *quic.BidirectionalStream, sendPath string, sendErr chan e
 			return err
 		}
 		if finished {
+			fmt.Printf("Finished writing to stream %d\n", stream.StreamID())
 			return nil
 		}
 	}
