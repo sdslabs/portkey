@@ -8,23 +8,20 @@ import (
 )
 
 const (
-	// maxDatagramSize is the default maximum packet size used in the Linux TCP implementation.
-	// Used in QUIC for congestion window computations in bytes.
-	maxDatagramSize                 = protocol.ByteCount(protocol.MaxPacketSizeIPv4)
-	maxBurstBytes                   = 3 * maxDatagramSize
-	renoBeta                float32 = 0.7 // Reno backoff factor.
-	maxCongestionWindow             = protocol.MaxCongestionWindowPackets * maxDatagramSize
-	minCongestionWindow             = 2 * maxDatagramSize
-	initialCongestionWindow         = 32 * maxDatagramSize
+	maxBurstBytes                                     = 3 * protocol.DefaultTCPMSS
+	renoBeta                       float32            = 0.7 // Reno backoff factor.
+	defaultMinimumCongestionWindow protocol.ByteCount = 2 * protocol.DefaultTCPMSS
 )
 
 type cubicSender struct {
 	hybridSlowStart HybridSlowStart
+	prr             PrrSender
 	rttStats        *RTTStats
 	stats           connectionStats
 	cubic           *Cubic
 
-	reno bool
+	noPRR bool
+	reno  bool
 
 	// Track the largest packet that has been sent.
 	largestSentPacketNumber protocol.PacketNumber
@@ -70,11 +67,7 @@ var _ SendAlgorithm = &cubicSender{}
 var _ SendAlgorithmWithDebugInfos = &cubicSender{}
 
 // NewCubicSender makes a new cubic sender
-func NewCubicSender(clock Clock, rttStats *RTTStats, reno bool) *cubicSender {
-	return newCubicSender(clock, rttStats, reno, initialCongestionWindow, maxCongestionWindow)
-}
-
-func newCubicSender(clock Clock, rttStats *RTTStats, reno bool, initialCongestionWindow, initialMaxCongestionWindow protocol.ByteCount) *cubicSender {
+func NewCubicSender(clock Clock, rttStats *RTTStats, reno bool, initialCongestionWindow, initialMaxCongestionWindow protocol.ByteCount) *cubicSender {
 	return &cubicSender{
 		rttStats:                   rttStats,
 		largestSentPacketNumber:    protocol.InvalidPacketNumber,
@@ -83,7 +76,7 @@ func newCubicSender(clock Clock, rttStats *RTTStats, reno bool, initialCongestio
 		initialCongestionWindow:    initialCongestionWindow,
 		initialMaxCongestionWindow: initialMaxCongestionWindow,
 		congestionWindow:           initialCongestionWindow,
-		minCongestionWindow:        minCongestionWindow,
+		minCongestionWindow:        defaultMinimumCongestionWindow,
 		slowstartThreshold:         initialMaxCongestionWindow,
 		maxCongestionWindow:        initialMaxCongestionWindow,
 		numConnections:             defaultNumConnections,
@@ -94,7 +87,13 @@ func newCubicSender(clock Clock, rttStats *RTTStats, reno bool, initialCongestio
 
 // TimeUntilSend returns when the next packet should be sent.
 func (c *cubicSender) TimeUntilSend(bytesInFlight protocol.ByteCount) time.Duration {
-	return c.rttStats.SmoothedRTT() * time.Duration(maxDatagramSize) / time.Duration(2*c.GetCongestionWindow())
+	if !c.noPRR && c.InRecovery() {
+		// PRR is used when in recovery.
+		if c.prr.CanSend(c.GetCongestionWindow(), bytesInFlight, c.GetSlowStartThreshold()) {
+			return 0
+		}
+	}
+	return c.rttStats.SmoothedRTT() * time.Duration(protocol.DefaultTCPMSS) / time.Duration(2*c.GetCongestionWindow())
 }
 
 func (c *cubicSender) OnPacketSent(
@@ -107,11 +106,18 @@ func (c *cubicSender) OnPacketSent(
 	if !isRetransmittable {
 		return
 	}
+	if c.InRecovery() {
+		// PRR is used when in recovery.
+		c.prr.OnPacketSent(bytes)
+	}
 	c.largestSentPacketNumber = packetNumber
 	c.hybridSlowStart.OnPacketSent(packetNumber)
 }
 
 func (c *cubicSender) CanSend(bytesInFlight protocol.ByteCount) bool {
+	if !c.noPRR && c.InRecovery() {
+		return c.prr.CanSend(c.GetCongestionWindow(), bytesInFlight, c.GetSlowStartThreshold())
+	}
 	return bytesInFlight < c.GetCongestionWindow()
 }
 
@@ -140,7 +146,7 @@ func (c *cubicSender) SlowstartThreshold() protocol.ByteCount {
 }
 
 func (c *cubicSender) MaybeExitSlowStart() {
-	if c.InSlowStart() && c.hybridSlowStart.ShouldExitSlowStart(c.rttStats.LatestRTT(), c.rttStats.MinRTT(), c.GetCongestionWindow()/maxDatagramSize) {
+	if c.InSlowStart() && c.hybridSlowStart.ShouldExitSlowStart(c.rttStats.LatestRTT(), c.rttStats.MinRTT(), c.GetCongestionWindow()/protocol.DefaultTCPMSS) {
 		c.ExitSlowstart()
 	}
 }
@@ -153,6 +159,10 @@ func (c *cubicSender) OnPacketAcked(
 ) {
 	c.largestAckedPacketNumber = utils.MaxPacketNumber(ackedPacketNumber, c.largestAckedPacketNumber)
 	if c.InRecovery() {
+		// PRR is used when in recovery.
+		if !c.noPRR {
+			c.prr.OnPacketAcked(ackedBytes)
+		}
 		return
 	}
 	c.maybeIncreaseCwnd(ackedPacketNumber, ackedBytes, priorInFlight, eventTime)
@@ -185,12 +195,16 @@ func (c *cubicSender) OnPacketLost(
 		c.stats.slowstartPacketsLost++
 	}
 
+	if !c.noPRR {
+		c.prr.OnPacketLost(priorInFlight)
+	}
+
 	// TODO(chromium): Separate out all of slow start into a separate class.
 	if c.slowStartLargeReduction && c.InSlowStart() {
 		if c.congestionWindow >= 2*c.initialCongestionWindow {
 			c.minSlowStartExitWindow = c.congestionWindow / 2
 		}
-		c.congestionWindow -= maxDatagramSize
+		c.congestionWindow -= protocol.DefaultTCPMSS
 	} else if c.reno {
 		c.congestionWindow = protocol.ByteCount(float32(c.congestionWindow) * c.RenoBeta())
 	} else {
@@ -233,7 +247,7 @@ func (c *cubicSender) maybeIncreaseCwnd(
 	}
 	if c.InSlowStart() {
 		// TCP slow start, exponential growth, increase by one for each ACK.
-		c.congestionWindow += maxDatagramSize
+		c.congestionWindow += protocol.DefaultTCPMSS
 		return
 	}
 	// Congestion avoidance
@@ -242,8 +256,8 @@ func (c *cubicSender) maybeIncreaseCwnd(
 		c.numAckedPackets++
 		// Divide by num_connections to smoothly increase the CWND at a faster
 		// rate than conventional Reno.
-		if c.numAckedPackets*uint64(c.numConnections) >= uint64(c.congestionWindow)/uint64(maxDatagramSize) {
-			c.congestionWindow += maxDatagramSize
+		if c.numAckedPackets*uint64(c.numConnections) >= uint64(c.congestionWindow)/uint64(protocol.DefaultTCPMSS) {
+			c.congestionWindow += protocol.DefaultTCPMSS
 			c.numAckedPackets = 0
 		}
 	} else {
@@ -297,6 +311,7 @@ func (c *cubicSender) OnRetransmissionTimeout(packetsRetransmitted bool) {
 // OnConnectionMigration is called when the connection is migrated (?)
 func (c *cubicSender) OnConnectionMigration() {
 	c.hybridSlowStart.Restart()
+	c.prr = PrrSender{}
 	c.largestSentPacketNumber = protocol.InvalidPacketNumber
 	c.largestAckedPacketNumber = protocol.InvalidPacketNumber
 	c.largestSentAtLastCutback = protocol.InvalidPacketNumber

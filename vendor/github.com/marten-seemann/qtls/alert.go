@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build go1.14
-
 package qtls
 
 import "strconv"
@@ -45,7 +43,6 @@ const (
 	alertNoRenegotiation        alert = 100
 	alertMissingExtension       alert = 109
 	alertUnsupportedExtension   alert = 110
-	alertUnrecognizedName       alert = 112
 	alertNoApplicationProtocol  alert = 120
 )
 
@@ -75,7 +72,6 @@ var alertText = map[alert]string{
 	alertNoRenegotiation:        "no renegotiation",
 	alertMissingExtension:       "missing extension",
 	alertUnsupportedExtension:   "unsupported extension",
-	alertUnrecognizedName:       "unrecognized name",
 	alertNoApplicationProtocol:  "no application protocol",
 }
 

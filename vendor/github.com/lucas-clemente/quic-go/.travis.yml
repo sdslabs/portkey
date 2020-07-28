@@ -4,7 +4,6 @@ group: travis_latest
 language: go
 
 go:
-  - "1.14.x"
   - "1.13.x"
 
 # first part of the GOARCH workaround
@@ -24,10 +23,6 @@ env:
     - TRAVIS_GOARCH=386 TESTMODE=unit
     - TRAVIS_GOARCH=386 TESTMODE=integration
 
-jobs:
-  exclude:
-    - go: "1.13.x"
-      env: TRAVIS_GOARCH=amd64 TESTMODE=fuzz
 
 # second part of the GOARCH workaround
 # now actually set the GOARCH env variable to the value of the temporary variable set earlier
@@ -38,11 +33,13 @@ before_install:
   - export GOARCH=$TRAVIS_GOARCH
   - go env # for debugging
   - travis_retry go get -t ./...
+  - "export DISPLAY=:99.0"
+  - "Xvfb $DISPLAY &> /dev/null &"
 
 script:
   - | 
     if [ ${TESTMODE} == "lint" ]; then
-      travis_retry curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.27.0
+      travis_retry curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s v1.18.0
     fi
   - .travis/script.sh
 

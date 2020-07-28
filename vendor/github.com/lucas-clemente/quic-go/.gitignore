@@ -1,9 +1,7 @@
 debug
 debug.test
 main
-mockgen_tmp.go
 *.qtr
-*.qlog
 
 fuzzing/*/*.zip
 fuzzing/*/coverprofile

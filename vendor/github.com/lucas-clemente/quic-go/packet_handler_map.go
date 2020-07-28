@@ -4,7 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
-	"fmt"
+	"errors"
 	"hash"
 	"net"
 	"sync"
@@ -14,16 +14,6 @@ import (
 	"github.com/lucas-clemente/quic-go/internal/utils"
 	"github.com/lucas-clemente/quic-go/internal/wire"
 )
-
-type statelessResetErr struct {
-	token *[16]byte
-}
-
-func (e statelessResetErr) StatelessResetToken() *[16]byte { return e.token }
-
-func (e statelessResetErr) Error() string {
-	return fmt.Sprintf("received a stateless reset with token %x", *e.token)
-}
 
 // The packetHandlerMap stores packetHandlers, identified by connection ID.
 // It is used:
@@ -105,32 +95,23 @@ func (h *packetHandlerMap) logUsage() {
 	}
 }
 
-func (h *packetHandlerMap) Add(id protocol.ConnectionID, handler packetHandler) bool /* was added */ {
-	sid := string(id)
-
+func (h *packetHandlerMap) Add(id protocol.ConnectionID, handler packetHandler) [16]byte {
 	h.mutex.Lock()
-	defer h.mutex.Unlock()
-
-	if _, ok := h.handlers[sid]; ok {
-		return false
-	}
-	h.handlers[sid] = handler
-	return true
+	h.handlers[string(id)] = handler
+	h.mutex.Unlock()
+	return h.GetStatelessResetToken(id)
 }
 
-func (h *packetHandlerMap) AddWithConnID(clientDestConnID, newConnID protocol.ConnectionID, fn func() packetHandler) bool {
-	sid := string(clientDestConnID)
+func (h *packetHandlerMap) AddIfNotTaken(id protocol.ConnectionID, handler packetHandler) bool /* was added */ {
+	sid := string(id)
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
-	if _, ok := h.handlers[sid]; ok {
-		return false
+	if _, ok := h.handlers[sid]; !ok {
+		h.handlers[sid] = handler
+		return true
 	}
-
-	sess := fn()
-	h.handlers[sid] = sess
-	h.handlers[string(newConnID)] = sess
-	return true
+	return false
 }
 
 func (h *packetHandlerMap) Remove(id protocol.ConnectionID) {
@@ -154,7 +135,7 @@ func (h *packetHandlerMap) ReplaceWithClosed(id protocol.ConnectionID, handler p
 
 	time.AfterFunc(h.deleteRetiredSessionsAfter, func() {
 		h.mutex.Lock()
-		handler.shutdown()
+		handler.Close()
 		delete(h.handlers, string(id))
 		h.mutex.Unlock()
 	})
@@ -194,8 +175,8 @@ func (h *packetHandlerMap) CloseServer() {
 		if handler.getPerspective() == protocol.PerspectiveServer {
 			wg.Add(1)
 			go func(handler packetHandler) {
-				// blocks until the CONNECTION_CLOSE has been sent and the run-loop has stopped
-				handler.shutdown()
+				// session.Close() blocks until the CONNECTION_CLOSE has been sent and the run-loop has stopped
+				_ = handler.Close()
 				wg.Done()
 			}(handler)
 		}
@@ -204,9 +185,8 @@ func (h *packetHandlerMap) CloseServer() {
 	wg.Wait()
 }
 
-// Destroy the underlying connection and wait until listen() has returned.
-// It does not close active sessions.
-func (h *packetHandlerMap) Destroy() error {
+// Close the underlying connection and wait until listen() has returned.
+func (h *packetHandlerMap) Close() error {
 	if err := h.conn.Close(); err != nil {
 		return err
 	}
@@ -243,7 +223,7 @@ func (h *packetHandlerMap) listen() {
 	defer close(h.listening)
 	for {
 		buffer := getPacketBuffer()
-		data := buffer.Data[:protocol.MaxReceivePacketSize]
+		data := buffer.Slice
 		// The packet size should not exceed protocol.MaxReceivePacketSize bytes
 		// If it does, we only read a truncated packet, which will then end up undecryptable
 		n, addr, err := h.conn.ReadFrom(data)
@@ -309,8 +289,8 @@ func (h *packetHandlerMap) maybeHandleStatelessReset(data []byte) bool {
 	var token [16]byte
 	copy(token[:], data[len(data)-16:])
 	if sess, ok := h.resetTokens[token]; ok {
-		h.logger.Debugf("Received a stateless reset with token %#x. Closing session.", token)
-		go sess.destroy(&statelessResetErr{token: &token})
+		h.logger.Debugf("Received a stateless retry with token %#x. Closing session.", token)
+		go sess.destroy(errors.New("received a stateless reset"))
 		return true
 	}
 	return false
