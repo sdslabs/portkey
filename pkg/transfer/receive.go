@@ -1,11 +1,12 @@
 package transfer
 
 import (
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/pion/quic"
 )
@@ -14,6 +15,7 @@ const receiveBufferSize = 100
 
 func ReadLoop(stream *quic.BidirectionalStream, receivePath string, receiveErr chan error, wg *sync.WaitGroup) error {
 	defer wg.Done()
+
 	zipfile, err := ioutil.TempFile(os.TempDir(), "portkey*.zip")
 	if err != nil {
 		return err
@@ -47,7 +49,7 @@ func ReadLoop(stream *quic.BidirectionalStream, receivePath string, receiveErr c
 
 	err = unzip(zipfile, receivePath)
 	if err == nil {
-		fmt.Printf("Finished reading from Stream %d\n", stream.StreamID())
+		log.Infof("Finished reading from Stream %d\n", stream.StreamID())
 	}
 	return err
 }
