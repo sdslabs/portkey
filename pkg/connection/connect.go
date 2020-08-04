@@ -1,13 +1,13 @@
 package connection
 
 import (
-	"fmt"
 	"sync"
 
 	"github.com/pion/quic"
 	"github.com/pion/webrtc/v2"
 	log "github.com/sirupsen/logrus"
 
+	"github.com/sdslabs/portkey/pkg/benchmark"
 	"github.com/sdslabs/portkey/pkg/session"
 	"github.com/sdslabs/portkey/pkg/signal"
 )
@@ -15,7 +15,7 @@ import (
 var wg sync.WaitGroup
 var stunServers []string = []string{"stun:stun.l.google.com:19302"}
 
-func Connect(key string, sendPath string, receive bool, receivePath string) {
+func Connect(key string, sendPath string, receive bool, receivePath string, doBenchmarking bool) {
 	isOffer := (key == "")
 	api := webrtc.NewAPI()
 	iceOptions := webrtc.ICEGatherOptions{
@@ -59,7 +59,7 @@ func Connect(key string, sendPath string, receive bool, receivePath string) {
 	if receive {
 		wg.Add(1)
 		qt.OnBidirectionalStream(func(stream *quic.BidirectionalStream) {
-			fmt.Printf("New stream received: streamid = %d\n", stream.StreamID())
+			log.Infof("New stream received: streamid = %d\n", stream.StreamID())
 			go session.ReadLoop(stream, receivePath, receiveErr, &wg)
 		})
 	}
@@ -100,7 +100,19 @@ func Connect(key string, sendPath string, receive bool, receivePath string) {
 		log.Fatal(err)
 	}
 
-	fmt.Println("\n\n------------Connection established------------")
+	log.Info("Connection established")
+	if doBenchmarking {
+		err = benchmark.StartTransfer(isOffer)
+		if err != nil {
+			log.WithError(err).Errorln("Error in starting benchmarking")
+		}
+		defer func() {
+			err = benchmark.EndTransfer(isOffer)
+			if err != nil {
+				log.WithError(err).Errorln("Error in ending benchmarking")
+			}
+		}()
+	}
 
 	sendErr := make(chan error)
 	if sendPath != "" {
@@ -108,7 +120,7 @@ func Connect(key string, sendPath string, receive bool, receivePath string) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("New stream created: streamid = %d\n", stream.StreamID())
+		log.Infof("New stream created: streamid = %d\n", stream.StreamID())
 		wg.Add(1)
 		go session.WriteLoop(stream, sendPath, sendErr, &wg)
 	}

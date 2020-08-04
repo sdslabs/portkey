@@ -1,11 +1,12 @@
 package session
 
 import (
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/pion/quic"
 	"github.com/sdslabs/portkey/pkg/utils"
@@ -15,6 +16,7 @@ const sendBufferSize = 100
 
 func WriteLoop(stream *quic.BidirectionalStream, sendPath string, sendErr chan error, wg *sync.WaitGroup) error {
 	defer wg.Done()
+
 	zipfile, err := ioutil.TempFile(os.TempDir(), "portkey*.zip")
 	if err != nil {
 		return err
@@ -49,7 +51,7 @@ func WriteLoop(stream *quic.BidirectionalStream, sendPath string, sendErr chan e
 			return err
 		}
 		if finished {
-			fmt.Printf("Finished writing to stream %d\n", stream.StreamID())
+			log.Infof("Finished writing to stream %d\n", stream.StreamID())
 			return nil
 		}
 	}
