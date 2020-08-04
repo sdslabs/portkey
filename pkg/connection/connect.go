@@ -7,6 +7,7 @@ import (
 	"github.com/pion/webrtc/v2"
 	log "github.com/sirupsen/logrus"
 
+	"github.com/sdslabs/portkey/pkg/session"
 	"github.com/sdslabs/portkey/pkg/benchmark"
 	"github.com/sdslabs/portkey/pkg/signal"
 	"github.com/sdslabs/portkey/pkg/transfer"
