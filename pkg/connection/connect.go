@@ -9,6 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/sdslabs/portkey/pkg/signal"
+	"github.com/sdslabs/portkey/pkg/tools"
 	"github.com/sdslabs/portkey/pkg/transfer"
 )
 
@@ -104,13 +105,38 @@ func Connect(key string, sendPath string, receive bool, receivePath string) {
 
 	sendErr := make(chan error)
 	if sendPath != "" {
-		stream, err := qt.CreateBidirectionalStream()
+		filenames, err := tools.ChunkFile(sendPath)
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("New stream created: streamid = %d\n", stream.StreamID())
+		stream1, err := qt.CreateBidirectionalStream()
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("New stream created: streamid = %d\n", stream1.StreamID())
 		wg.Add(1)
-		go transfer.WriteLoop(stream, sendPath, sendErr, &wg)
+		go transfer.WriteLoop(stream1, filenames[0], sendErr, &wg)
+		stream2, err := qt.CreateBidirectionalStream()
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("New stream created: streamid = %d\n", stream2.StreamID())
+		wg.Add(1)
+		go transfer.WriteLoop(stream2, filenames[1], sendErr, &wg)
+		stream3, err := qt.CreateBidirectionalStream()
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("New stream created: streamid = %d\n", stream3.StreamID())
+		wg.Add(1)
+		go transfer.WriteLoop(stream3, filenames[2], sendErr, &wg)
+		stream4, err := qt.CreateBidirectionalStream()
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("New stream created: streamid = %d\n", stream4.StreamID())
+		wg.Add(1)
+		go transfer.WriteLoop(stream4, filenames[3], sendErr, &wg)
 	}
 
 	wg.Wait()

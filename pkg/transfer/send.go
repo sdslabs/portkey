@@ -14,6 +14,7 @@ const sendBufferSize = 100
 
 func WriteLoop(stream *quic.BidirectionalStream, sendPath string, sendErr chan error, wg *sync.WaitGroup) error {
 	defer wg.Done()
+	fmt.Println("inside write loop")
 	zipfile, err := ioutil.TempFile(os.TempDir(), "portkey*.zip")
 	if err != nil {
 		return err
@@ -21,10 +22,12 @@ func WriteLoop(stream *quic.BidirectionalStream, sendPath string, sendErr chan e
 	defer os.Remove(zipfile.Name())
 	err = zipit(sendPath, zipfile)
 	if err != nil {
+		fmt.Println("error 1", err)
 		return err
 	}
 
 	if _, err = zipfile.Seek(0, 0); err != nil {
+		fmt.Println("error 2", err)
 		return err
 	}
 	finished := false
@@ -35,6 +38,7 @@ func WriteLoop(stream *quic.BidirectionalStream, sendPath string, sendErr chan e
 			if err == io.EOF {
 				finished = true
 			} else {
+				fmt.Println("error 3", err)
 				return err
 			}
 		}
@@ -43,8 +47,10 @@ func WriteLoop(stream *quic.BidirectionalStream, sendPath string, sendErr chan e
 			Data:     buffer[:n],
 			Finished: finished,
 		}
+		fmt.Println("writing data:  ", data)
 		err = stream.Write(data)
 		if err != nil {
+			fmt.Println("error 4", err)
 			return err
 		}
 		if finished {
