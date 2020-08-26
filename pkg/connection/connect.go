@@ -58,7 +58,7 @@ func Connect(key string, sendPath string, receive bool, receivePath string) {
 
 	receiveErr := make(chan error)
 	if receive {
-		wg.Add(1)
+		wg.Add(4)
 		qt.OnBidirectionalStream(func(stream *quic.BidirectionalStream) {
 			fmt.Printf("New stream received: streamid = %d\n", stream.StreamID())
 			go transfer.ReadLoop(stream, receivePath, receiveErr, &wg)
