@@ -1,11 +1,12 @@
-package signal
+package utils
 
 import (
 	"encoding/base64"
 	"encoding/json"
 )
 
-func encode(obj interface{}) (string, error) {
+// Encode encodes the input in base64.
+func Encode(obj interface{}) (string, error) {
 	b, err := json.Marshal(obj)
 	if err != nil {
 		return "", err
@@ -14,12 +15,12 @@ func encode(obj interface{}) (string, error) {
 	return base64.StdEncoding.EncodeToString(b), nil
 }
 
-func decode(in string, obj interface{}) error {
+// Decode decodes the data from base64.
+func Decode(in string, obj interface{}) error {
 	b, err := base64.StdEncoding.DecodeString(in)
 	if err != nil {
 		return err
 	}
 
-	err = json.Unmarshal(b, obj)
-	return err
+	return json.Unmarshal(b, obj)
 }
