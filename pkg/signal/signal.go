@@ -7,6 +7,7 @@ import (
 	"net/url"
 
 	"github.com/pion/webrtc/v2"
+	"github.com/sdslabs/portkey/pkg/utils"
 )
 
 type Signal struct {
@@ -18,7 +19,7 @@ type Signal struct {
 var serverURL string = "https://portkey-server.herokuapp.com/"
 
 func SignalExchange(localSignal, remoteSignal *Signal) error {
-	connParams, err := encode(localSignal)
+	connParams, err := utils.Encode(localSignal)
 	if err != nil {
 		return err
 	}
@@ -51,12 +52,12 @@ func SignalExchange(localSignal, remoteSignal *Signal) error {
 	}
 	resp.Body.Close()
 
-	err = decode(string(body), remoteSignal)
+	err = utils.Decode(string(body), remoteSignal)
 	return err
 }
 
 func SignalExchangeWithKey(localSignal, remoteSignal *Signal, key string) error {
-	connParams, err := encode(localSignal)
+	connParams, err := utils.Encode(localSignal)
 	if err != nil {
 		return err
 	}
@@ -74,6 +75,6 @@ func SignalExchangeWithKey(localSignal, remoteSignal *Signal, key string) error 
 	}
 	resp.Body.Close()
 
-	err = decode(string(body), remoteSignal)
+	err = utils.Decode(string(body), remoteSignal)
 	return err
 }
