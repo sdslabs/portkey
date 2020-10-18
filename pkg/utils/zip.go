@@ -1,4 +1,4 @@
-package transfer
+package utils
 
 import (
 	"archive/zip"
@@ -8,7 +8,8 @@ import (
 	"strings"
 )
 
-func zipit(source string, zipfile *os.File) error {
+// Zip zips the paased file.
+func Zip(source string, zipfile *os.File) error {
 	archive := zip.NewWriter(zipfile)
 	defer archive.Close()
 
@@ -64,7 +65,8 @@ func zipit(source string, zipfile *os.File) error {
 	return err
 }
 
-func unzip(zipfile *os.File, receivePath string) error {
+// Unzip unzips the passed zipped file.
+func Unzip(zipfile *os.File, receivePath string) error {
 	defer zipfile.Close()
 
 	reader, err := zip.OpenReader(zipfile.Name())

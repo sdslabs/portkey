@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/pion/quic"
+	"github.com/sdslabs/portkey/pkg/utils"
 )
 
 const receiveBufferSize = 100
@@ -45,7 +46,7 @@ func ReadLoop(stream *quic.BidirectionalStream, receivePath string, receiveErr c
 		}
 	}
 
-	err = unzip(zipfile, receivePath)
+	err = utils.Unzip(zipfile, receivePath)
 	if err == nil {
 		fmt.Printf("Finished reading from Stream %d\n", stream.StreamID())
 	}
