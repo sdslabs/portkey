@@ -8,8 +8,8 @@ import (
 	"github.com/pion/webrtc/v2"
 	log "github.com/sirupsen/logrus"
 
+	"github.com/sdslabs/portkey/pkg/session"
 	"github.com/sdslabs/portkey/pkg/signal"
-	"github.com/sdslabs/portkey/pkg/transfer"
 )
 
 var wg sync.WaitGroup
@@ -60,7 +60,7 @@ func Connect(key string, sendPath string, receive bool, receivePath string) {
 		wg.Add(1)
 		qt.OnBidirectionalStream(func(stream *quic.BidirectionalStream) {
 			fmt.Printf("New stream received: streamid = %d\n", stream.StreamID())
-			go transfer.ReadLoop(stream, receivePath, receiveErr, &wg)
+			go session.ReadLoop(stream, receivePath, receiveErr, &wg)
 		})
 	}
 
@@ -110,7 +110,7 @@ func Connect(key string, sendPath string, receive bool, receivePath string) {
 		}
 		fmt.Printf("New stream created: streamid = %d\n", stream.StreamID())
 		wg.Add(1)
-		go transfer.WriteLoop(stream, sendPath, sendErr, &wg)
+		go session.WriteLoop(stream, sendPath, sendErr, &wg)
 	}
 
 	wg.Wait()
