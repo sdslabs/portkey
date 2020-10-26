@@ -29,7 +29,7 @@ func StartTransfer(isOffer bool) error {
 		"isOffer": {isOfferString},
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("Error in StartTransfer post request: %v", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
@@ -48,7 +48,7 @@ func EndTransfer(isOffer bool) error {
 		"isOffer": {isOfferString},
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("Error in EndTransfer post request: %v", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
