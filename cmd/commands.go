@@ -34,6 +34,6 @@ func init() {
 	rootCmd.Flags().StringVarP(&key, "key", "k", "", "Key to connect to peer")
 	rootCmd.Flags().StringVarP(&sendPath, "send", "s", "", "Absolute path of directory/file to send")
 	rootCmd.Flags().BoolVarP(&receive, "receive", "r", false, "Set to receive files")
-	rootCmd.Flags().StringVar(&receivePath, "rpath", "", "Absolute path of where to receive files, pwd by default")
-	rootCmd.Flags().BoolVar(&doBenchmarking, "benchmark", false, "Set to benchmark locally(for local testing)")
+	rootCmd.Flags().StringVarP(&receivePath, "rpath", "p", "", "Absolute path of where to receive files, pwd by default")
+	rootCmd.Flags().BoolVarP(&doBenchmarking, "benchmark", "b", false, "Set to benchmark locally(for local testing)")
 }

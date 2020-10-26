@@ -103,13 +103,11 @@ func Connect(key string, sendPath string, receive bool, receivePath string, doBe
 
 	log.Info("Connection established")
 	if doBenchmarking {
-		err = benchmark.StartTransfer(isOffer)
-		if err != nil {
+		if err = benchmark.StartTransfer(isOffer); err != nil {
 			log.WithError(err).Errorln("Error in starting benchmarking")
 		}
 		defer func() {
-			err = benchmark.EndTransfer(isOffer)
-			if err != nil {
+			if err = benchmark.EndTransfer(isOffer); err != nil {
 				log.WithError(err).Errorln("Error in ending benchmarking")
 			}
 		}()

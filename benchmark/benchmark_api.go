@@ -27,12 +27,13 @@ func startTransfer(w http.ResponseWriter, req *http.Request) {
 	}
 	isOffer := (req.FormValue("isOffer") == "true")
 	startTime, err := time.Parse(timeFormat, req.FormValue("time"))
-	if err != nil || (isOffer && offererOn) || (!isOffer && receiverOn) {
-		if err != nil {
-			log.WithError(err).Infoln("Bad request on /start")
-		} else {
-			log.Infoln("Bad request on /start")
-		}
+	if err != nil {
+		log.WithError(err).Infoln("Error in parsing time format. Bad request on /start.")
+		w.WriteHeader(400)
+		return
+	}
+	if (isOffer && offererOn) || (!isOffer && receiverOn) {
+		log.Infoln("Client has already started transfer. Bad request on /start. ")
 		w.WriteHeader(400)
 		return
 	}
@@ -57,12 +58,13 @@ func endTransfer(w http.ResponseWriter, req *http.Request) {
 	}
 	isOffer := (req.FormValue("isOffer") == "true")
 	endTime, err := time.Parse(timeFormat, req.FormValue("time"))
-	if err != nil || (isOffer && !offererOn) || (!isOffer && !receiverOn) {
-		if err != nil {
-			log.WithError(err).Infoln("Bad request on /end")
-		} else {
-			log.Infoln("Bad request on /end")
-		}
+	if err != nil {
+		log.WithError(err).Infoln("Error in parsing time format. Bad request on /end")
+		w.WriteHeader(400)
+		return
+	}
+	if (isOffer && !offererOn) || (!isOffer && !receiverOn) {
+		log.Infoln("Client is not in a transfer. Bad request on /end")
 		w.WriteHeader(400)
 		return
 	}
