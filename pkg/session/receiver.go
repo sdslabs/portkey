@@ -16,12 +16,11 @@ const receiveBufferSize = 100
 
 func ReadLoop(stream *quic.BidirectionalStream, receivePath string, receiveErr chan error, wg *sync.WaitGroup) error {
 	defer wg.Done()
-
-	zipfile, err := ioutil.TempFile(os.TempDir(), "portkey*.zip")
+	tempfile, err := ioutil.TempFile(os.TempDir(), "portkey*")
 	if err != nil {
 		return err
 	}
-	defer os.Remove(zipfile.Name())
+	defer os.Remove(tempfile.Name())
 
 	buffer := make([]byte, receiveBufferSize)
 
@@ -32,7 +31,7 @@ func ReadLoop(stream *quic.BidirectionalStream, receivePath string, receiveErr c
 				return err
 			}
 		}
-		_, err = zipfile.Write(buffer[:params.Amount])
+		_, err = tempfile.Write(buffer[:params.Amount])
 		if err != nil {
 			return err
 		}
@@ -48,9 +47,10 @@ func ReadLoop(stream *quic.BidirectionalStream, receivePath string, receiveErr c
 		}
 	}
 
-	err = utils.Unzip(zipfile, receivePath)
+	err = utils.Untar(tempfile, receivePath)
 	if err == nil {
 		log.Infof("Finished reading from Stream %d\n", stream.StreamID())
 	}
-	return err
+
+	return nil
 }
