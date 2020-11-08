@@ -17,23 +17,24 @@ const sendBufferSize = 100
 func WriteLoop(stream *quic.BidirectionalStream, sendPath string, sendErr chan error, wg *sync.WaitGroup) error {
 	defer wg.Done()
 
-	zipfile, err := ioutil.TempFile(os.TempDir(), "portkey*.zip")
+	tempfile, err := ioutil.TempFile(os.TempDir(), "portkey*")
 	if err != nil {
 		return err
 	}
-	defer os.Remove(zipfile.Name())
-	err = utils.Zip(sendPath, zipfile)
+	defer os.Remove(tempfile.Name())
+
+	err = utils.Tar(sendPath, tempfile)
 	if err != nil {
 		return err
 	}
 
-	if _, err = zipfile.Seek(0, 0); err != nil {
+	if _, err = tempfile.Seek(0, 0); err != nil {
 		return err
 	}
 	finished := false
 	buffer := make([]byte, sendBufferSize)
 	for {
-		n, err := zipfile.Read(buffer)
+		n, err := tempfile.Read(buffer)
 		if err != nil {
 			if err == io.EOF {
 				finished = true
