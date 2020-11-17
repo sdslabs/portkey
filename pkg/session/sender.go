@@ -1,4 +1,4 @@
-package transfer
+package session
 
 import (
 	"io"
@@ -9,6 +9,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/pion/quic"
+	"github.com/sdslabs/portkey/pkg/utils"
 )
 
 const sendBufferSize = 100
@@ -21,7 +22,7 @@ func WriteLoop(stream *quic.BidirectionalStream, sendPath string, sendErr chan e
 		return err
 	}
 	defer os.Remove(zipfile.Name())
-	err = zipit(sendPath, zipfile)
+	err = utils.Zip(sendPath, zipfile)
 	if err != nil {
 		return err
 	}

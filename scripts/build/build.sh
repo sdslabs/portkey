@@ -41,7 +41,7 @@ if [ -n "$VERBOSE" ]; then
   echo "Building with -ldflags $ldflags"
 fi
 
-GOBIN=$PWD go "${GO_CMD}" -o "$(go env GOPATH)/bin/portkey" ${GO_FLAGS} -ldflags "${ldflags}" "${repo_path}/cmd"
+GOBIN=$PWD go "${GO_CMD}" -o "./portkey" ${GO_FLAGS} -ldflags "${ldflags}" "${repo_path}/cmd"
 
 echo "[*] Build Complete."
 exit 0

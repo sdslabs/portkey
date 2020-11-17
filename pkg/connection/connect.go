@@ -10,7 +10,6 @@ import (
 	"github.com/sdslabs/portkey/pkg/benchmark"
 	"github.com/sdslabs/portkey/pkg/session"
 	"github.com/sdslabs/portkey/pkg/signal"
-	"github.com/sdslabs/portkey/pkg/transfer"
 )
 
 var wg sync.WaitGroup
@@ -121,7 +120,7 @@ func Connect(key string, sendPath string, receive bool, receivePath string, doBe
 		}
 		log.Infof("New stream created: streamid = %d\n", stream.StreamID())
 		wg.Add(1)
-		go transfer.WriteLoop(stream, sendPath, sendErr, &wg)
+		go session.WriteLoop(stream, sendPath, sendErr, &wg)
 	}
 
 	wg.Wait()
