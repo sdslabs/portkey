@@ -2,13 +2,14 @@ package benchmark
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"time"
 )
 
-var apiURL string = "http://localhost" + getPort()
+var apiURL string = net.JoinHostPort("http://localhost", getPort())
 var timeFormat = time.UnixDate
 
 func getPort() string {
