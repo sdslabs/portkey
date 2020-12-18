@@ -3,6 +3,7 @@ module github.com/sdslabs/portkey
 go 1.14
 
 require (
+	github.com/DataDog/zstd v1.4.5
 	github.com/pion/quic v0.1.3
 	github.com/pion/webrtc/v2 v2.2.20
 	github.com/sirupsen/logrus v1.6.0
