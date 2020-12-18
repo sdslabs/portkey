@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/DataDog/zstd"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/pion/quic"
@@ -13,6 +14,7 @@ import (
 )
 
 const receiveBufferSize = 100
+const fileBufferSize = 3 * receiveBufferSize
 
 func ReadLoop(stream *quic.BidirectionalStream, receivePath string, receiveErr chan error, wg *sync.WaitGroup) error {
 	defer wg.Done()
@@ -22,16 +24,23 @@ func ReadLoop(stream *quic.BidirectionalStream, receivePath string, receiveErr c
 	}
 	defer os.Remove(tempfile.Name())
 
-	buffer := make([]byte, receiveBufferSize)
+	receiveBuffer := make([]byte, receiveBufferSize)
+	fileBuffer := make([]byte, fileBufferSize)
 
 	for {
-		params, err := stream.ReadInto(buffer)
+		params, err := stream.ReadInto(receiveBuffer)
 		if err != nil {
 			if err != io.EOF {
 				return err
 			}
 		}
-		_, err = tempfile.Write(buffer[:params.Amount])
+
+		fileBuffer, err := zstd.Decompress(fileBuffer, receiveBuffer[:params.Amount])
+		if err != nil {
+			return err
+		}
+
+		_, err = tempfile.Write(fileBuffer)
 		if err != nil {
 			return err
 		}

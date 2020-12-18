@@ -6,13 +6,14 @@ import (
 	"os"
 	"sync"
 
+	"github.com/DataDog/zstd"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/pion/quic"
 	"github.com/sdslabs/portkey/pkg/utils"
 )
 
-const sendBufferSize = 100
+const compressBufferSize = 100
 
 func WriteLoop(stream *quic.BidirectionalStream, sendPath string, sendErr chan error, wg *sync.WaitGroup) error {
 	defer wg.Done()
@@ -32,9 +33,11 @@ func WriteLoop(stream *quic.BidirectionalStream, sendPath string, sendErr chan e
 		return err
 	}
 	finished := false
-	buffer := make([]byte, sendBufferSize)
+	fileBuffer := make([]byte, compressBufferSize)
+	sendBuffer := make([]byte, compressBufferSize)
+
 	for {
-		n, err := tempfile.Read(buffer)
+		bytesRead, err := tempfile.Read(fileBuffer)
 		if err != nil {
 			if err == io.EOF {
 				finished = true
@@ -43,8 +46,13 @@ func WriteLoop(stream *quic.BidirectionalStream, sendPath string, sendErr chan e
 			}
 		}
 
+		sendBuffer, err = zstd.Compress(sendBuffer, fileBuffer[:bytesRead])
+		if err != nil {
+			return err
+		}
+
 		data := quic.StreamWriteParameters{
-			Data:     buffer[:n],
+			Data:     sendBuffer,
 			Finished: finished,
 		}
 		err = stream.Write(data)
