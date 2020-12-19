@@ -19,16 +19,19 @@ func WriteLoop(stream *quic.BidirectionalStream, sendPath string, sendErr chan e
 
 	tempfile, err := ioutil.TempFile(os.TempDir(), "portkey*")
 	if err != nil {
+		log.WithError(err).Errorf("Error in sender stream: stream id = %d\n", stream.StreamID())
 		return err
 	}
 	defer os.Remove(tempfile.Name())
 
 	err = utils.Tar(sendPath, tempfile)
 	if err != nil {
+		log.WithError(err).Errorf("Error in sender stream: stream id = %d\n", stream.StreamID())
 		return err
 	}
 
 	if _, err = tempfile.Seek(0, 0); err != nil {
+		log.WithError(err).Errorf("Error in sender stream: stream id = %d\n", stream.StreamID())
 		return err
 	}
 	finished := false
@@ -39,6 +42,7 @@ func WriteLoop(stream *quic.BidirectionalStream, sendPath string, sendErr chan e
 			if err == io.EOF {
 				finished = true
 			} else {
+				log.WithError(err).Errorf("Error in sender stream: stream id = %d\n", stream.StreamID())
 				return err
 			}
 		}
@@ -49,6 +53,7 @@ func WriteLoop(stream *quic.BidirectionalStream, sendPath string, sendErr chan e
 		}
 		err = stream.Write(data)
 		if err != nil {
+			log.WithError(err).Errorf("Error in sender stream: stream id = %d\n", stream.StreamID())
 			return err
 		}
 		if finished {
