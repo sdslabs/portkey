@@ -46,6 +46,8 @@ func ReadLoop(stream *quic.BidirectionalStream, receivePath string, receiveErr c
 			}
 		}
 
+		log.Infof("Read %d bytes from stream %d\n", params.Amount, stream.StreamID())
+
 		_, err = pipeWriter.Write(receiveBuffer[:params.Amount])
 		if err != nil {
 			log.WithError(err).Errorf("Error in writing to compressed buffer in receiver stream: stream id = %d\n", stream.StreamID())
