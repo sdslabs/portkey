@@ -85,9 +85,10 @@ func WriteLoop(stream *quic.BidirectionalStream, sendPath string, sendErr chan e
 			return err
 		}
 
+		log.Infof("Wrote %d bytes to stream %d\n", bytesRead, stream.StreamID())
+
 		if finished {
 			log.Infof("Finished writing to stream %d\n", stream.StreamID())
-
 			log.Infof("Original file size: %d bytes\n", originalSize)
 			log.Infof("Compressed file size: %d bytes\n", compressedSize)
 			return nil
