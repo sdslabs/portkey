@@ -8,9 +8,16 @@ func getPadding(len int) int {
 	return 4 - (len % 4)
 }
 
-// appendBit will left-shift and append n bits of val
-func appendNBitsToUint16(src, n, val uint16) uint16 {
-	return (src << n) | (val & (0xFFFF >> (16 - n)))
+// setNBitsOfUint16 will truncate the value to size, left-shift to startIndex position and set
+func setNBitsOfUint16(src, size, startIndex, val uint16) (uint16, error) {
+	if startIndex+size > 16 {
+		return 0, errInvalidSizeOrStartIndex
+	}
+
+	// truncate val to size bits
+	val &= (1 << size) - 1
+
+	return src | (val << (16 - size - startIndex)), nil
 }
 
 // appendBit32 will left-shift and append n bits of val
