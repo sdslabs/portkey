@@ -3,7 +3,7 @@ package qerr
 import (
 	"fmt"
 
-	"github.com/marten-seemann/qtls"
+	"github.com/lucas-clemente/quic-go/internal/qtls"
 )
 
 // ErrorCode can be used as a normal error without reason.
@@ -13,14 +13,17 @@ type ErrorCode uint64
 const (
 	NoError                 ErrorCode = 0x0
 	InternalError           ErrorCode = 0x1
-	ServerBusy              ErrorCode = 0x2
+	ConnectionRefused       ErrorCode = 0x2
 	FlowControlError        ErrorCode = 0x3
 	StreamLimitError        ErrorCode = 0x4
 	StreamStateError        ErrorCode = 0x5
 	FinalSizeError          ErrorCode = 0x6
 	FrameEncodingError      ErrorCode = 0x7
 	TransportParameterError ErrorCode = 0x8
+	ConnectionIDLimitError  ErrorCode = 0x9
 	ProtocolViolation       ErrorCode = 0xa
+	InvalidToken            ErrorCode = 0xb
+	ApplicationError        ErrorCode = 0xc
 	CryptoBufferExceeded    ErrorCode = 0xd
 )
 
@@ -50,8 +53,8 @@ func (e ErrorCode) String() string {
 		return "NO_ERROR"
 	case InternalError:
 		return "INTERNAL_ERROR"
-	case ServerBusy:
-		return "SERVER_BUSY"
+	case ConnectionRefused:
+		return "CONNECTION_REFUSED"
 	case FlowControlError:
 		return "FLOW_CONTROL_ERROR"
 	case StreamLimitError:
@@ -64,8 +67,14 @@ func (e ErrorCode) String() string {
 		return "FRAME_ENCODING_ERROR"
 	case TransportParameterError:
 		return "TRANSPORT_PARAMETER_ERROR"
+	case ConnectionIDLimitError:
+		return "CONNECTION_ID_LIMIT_ERROR"
 	case ProtocolViolation:
 		return "PROTOCOL_VIOLATION"
+	case InvalidToken:
+		return "INVALID_TOKEN"
+	case ApplicationError:
+		return "APPLICATION_ERROR"
 	case CryptoBufferExceeded:
 		return "CRYPTO_BUFFER_EXCEEDED"
 	default:
