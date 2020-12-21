@@ -4,7 +4,7 @@ import (
 	"sync"
 
 	"github.com/pion/quic"
-	"github.com/pion/webrtc/v2"
+	"github.com/pion/webrtc/v3"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/sdslabs/portkey/pkg/benchmark"

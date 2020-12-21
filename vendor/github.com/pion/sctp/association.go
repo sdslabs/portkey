@@ -16,14 +16,18 @@ import (
 )
 
 // Use global random generator to properly seed by crypto grade random.
-var globalMathRandomGenerator = randutil.NewMathRandomGenerator()
+var (
+	globalMathRandomGenerator = randutil.NewMathRandomGenerator() // nolint:gochecknoglobals
+	errChunk                  = errors.New("Abort chunk, with following errors")
+)
 
 const (
-	receiveMTU          uint32 = 8192 // MTU for inbound packet (from DTLS)
-	initialMTU          uint32 = 1228 // initial MTU for outgoing packets (to DTLS)
-	initialRecvBufSize  uint32 = 1024 * 1024
-	commonHeaderSize    uint32 = 12
-	dataChunkHeaderSize uint32 = 16
+	receiveMTU            uint32 = 8192 // MTU for inbound packet (from DTLS)
+	initialMTU            uint32 = 1228 // initial MTU for outgoing packets (to DTLS)
+	initialRecvBufSize    uint32 = 1024 * 1024
+	commonHeaderSize      uint32 = 12
+	dataChunkHeaderSize   uint32 = 16
+	defaultMaxMessageSize uint32 = 65536
 )
 
 // association state enums
@@ -146,6 +150,7 @@ type Association struct {
 
 	// Congestion control parameters
 	maxReceiveBufferSize uint32
+	maxMessageSize       uint32
 	cwnd                 uint32 // my congestion window size
 	rwnd                 uint32 // calculated peer's receiver windows size
 	ssthresh             uint32 // slow start threshold
@@ -196,6 +201,7 @@ type Association struct {
 type Config struct {
 	NetConn              net.Conn
 	MaxReceiveBufferSize uint32
+	MaxMessageSize       uint32
 	LoggerFactory        logging.LoggerFactory
 }
 
@@ -239,10 +245,18 @@ func createAssociation(config Config) *Association {
 		maxReceiveBufferSize = config.MaxReceiveBufferSize
 	}
 
+	var maxMessageSize uint32
+	if config.MaxMessageSize == 0 {
+		maxMessageSize = defaultMaxMessageSize
+	} else {
+		maxMessageSize = config.MaxMessageSize
+	}
+
 	tsn := globalMathRandomGenerator.Uint32()
 	a := &Association{
 		netConn:                 config.NetConn,
 		maxReceiveBufferSize:    maxReceiveBufferSize,
+		maxMessageSize:          maxMessageSize,
 		myMaxNumOutboundStreams: math.MaxUint16,
 		myMaxNumInboundStreams:  math.MaxUint16,
 		payloadQueue:            newPayloadQueue(),
@@ -327,8 +341,8 @@ func (a *Association) sendInit() error {
 
 	outbound := &packet{}
 	outbound.verificationTag = a.peerVerificationTag
-	a.sourcePort = 5000      // TODO: Spec??
-	a.destinationPort = 5000 // TODO: Spec??
+	a.sourcePort = 5000      // Spec??
+	a.destinationPort = 5000 // Spec??
 	outbound.sourcePort = a.sourcePort
 	outbound.destinationPort = a.destinationPort
 
@@ -364,7 +378,6 @@ func (a *Association) sendCookieEcho() error {
 func (a *Association) Close() error {
 	a.log.Debugf("[%s] closing association..", a.name)
 
-	// TODO: shutdown sequence
 	a.setState(closed)
 
 	err := a.netConn.Close()
@@ -499,7 +512,7 @@ func (a *Association) handleInbound(raw []byte) error {
 		return nil
 	}
 
-	a.handleChunkStart(p)
+	a.handleChunkStart()
 
 	for _, c := range p.chunks {
 		if err := a.handleChunk(p, c); err != nil {
@@ -507,7 +520,7 @@ func (a *Association) handleInbound(raw []byte) error {
 		}
 	}
 
-	a.handleChunkEnd(p)
+	a.handleChunkEnd()
 
 	return nil
 }
@@ -731,7 +744,7 @@ func checkPacket(p *packet) error {
 
 	// Check values on the packet that are specific to a particular chunk type
 	for _, c := range p.chunks {
-		switch c.(type) {
+		switch c.(type) { // nolint:gocritic
 		case *chunkInit:
 			// An INIT or INIT ACK chunk MUST NOT be bundled with any other chunk.
 			// They MUST be the only chunks present in the SCTP packets that carry
@@ -800,6 +813,7 @@ func (a *Association) BytesReceived() uint64 {
 }
 
 func setSupportedExtensions(init *chunkInitCommon) {
+	// nolint:godox
 	// TODO RFC5061 https://tools.ietf.org/html/rfc6525#section-5.2
 	// An implementation supporting this (Supported Extensions Parameter)
 	// extension MUST list the ASCONF, the ASCONF-ACK, and the AUTH chunks
@@ -841,7 +855,7 @@ func (a *Association) handleInit(p *packet, i *chunkInit) ([]*packet, error) {
 	a.peerLastTSN = i.initialTSN - 1
 
 	for _, param := range i.params {
-		switch v := param.(type) {
+		switch v := param.(type) { // nolint:gocritic
 		case *paramSupportedExtensions:
 			for _, t := range v.ChunkTypes {
 				if t == ctForwardTSN {
@@ -982,19 +996,27 @@ func (a *Association) handleHeartbeat(c *chunkHeartbeat) []*packet {
 func (a *Association) handleCookieEcho(c *chunkCookieEcho) []*packet {
 	state := a.getState()
 	a.log.Debugf("[%s] COOKIE-ECHO received in state '%s'", a.name, getAssociationStateString(state))
-	if state != closed && state != cookieWait && state != cookieEchoed {
+	switch state {
+	default:
 		return nil
+	case established:
+		if !bytes.Equal(a.myCookie.cookie, c.cookie) {
+			return nil
+		}
+	case closed, cookieWait, cookieEchoed:
+		if !bytes.Equal(a.myCookie.cookie, c.cookie) {
+			return nil
+		}
+
+		a.t1Init.stop()
+		a.storedInit = nil
+
+		a.t1Cookie.stop()
+		a.storedCookieEcho = nil
+
+		a.setState(established)
+		a.handshakeCompletedCh <- nil
 	}
-
-	if !bytes.Equal(a.myCookie.cookie, c.cookie) {
-		return nil
-	}
-
-	a.t1Init.stop()
-	a.storedInit = nil
-
-	a.t1Cookie.stop()
-	a.storedCookieEcho = nil
 
 	p := &packet{
 		verificationTag: a.peerVerificationTag,
@@ -1002,14 +1024,11 @@ func (a *Association) handleCookieEcho(c *chunkCookieEcho) []*packet {
 		destinationPort: a.destinationPort,
 		chunks:          []chunk{&chunkCookieAck{}},
 	}
-
-	a.setState(established)
-	a.handshakeCompletedCh <- nil
 	return pack(p)
 }
 
 // The caller should hold the lock.
-func (a *Association) handleCookieAck() []*packet {
+func (a *Association) handleCookieAck() {
 	state := a.getState()
 	a.log.Debugf("[%s] COOKIE-ACK received in state '%s'", a.name, getAssociationStateString(state))
 	if state != cookieEchoed {
@@ -1017,7 +1036,7 @@ func (a *Association) handleCookieAck() []*packet {
 		// 5.2.5.  Handle Duplicate COOKIE-ACK.
 		//   At any state other than COOKIE-ECHOED, an endpoint should silently
 		//   discard a received COOKIE ACK chunk.
-		return nil
+		return
 	}
 
 	a.t1Cookie.stop()
@@ -1025,7 +1044,6 @@ func (a *Association) handleCookieAck() []*packet {
 
 	a.setState(established)
 	a.handshakeCompletedCh <- nil
-	return nil
 }
 
 // The caller should hold the lock.
@@ -1186,7 +1204,7 @@ func (a *Association) getOrCreateStream(streamIdentifier uint16) *Stream {
 }
 
 // The caller should hold the lock.
-func (a *Association) processSelectiveAck(d *chunkSelectiveAck) (map[uint16]int, uint32, error) {
+func (a *Association) processSelectiveAck(d *chunkSelectiveAck) (map[uint16]int, uint32, error) { // nolint:gocognit
 	bytesAckedPerStream := map[uint16]int{}
 
 	// New ack point, so pop all ACKed packets from inflightQueue
@@ -1312,7 +1330,7 @@ func (a *Association) onCumulativeTSNAckPointAdvanced(totalBytesAcked int) {
 		if !a.inFastRecovery &&
 			a.pendingQueue.size() > 0 {
 			a.cwnd += min32(uint32(totalBytesAcked), a.cwnd) // TCP way
-			//a.cwnd += min32(uint32(totalBytesAcked), a.mtu) // SCTP way (slow)
+			// a.cwnd += min32(uint32(totalBytesAcked), a.mtu) // SCTP way (slow)
 			a.log.Tracef("[%s] updated cwnd=%d ssthresh=%d acked=%d (SS)",
 				a.name, a.cwnd, a.ssthresh, totalBytesAcked)
 		} else {
@@ -1528,11 +1546,9 @@ func (a *Association) createForwardTSN() *chunkForwardTSN {
 		ssn, ok := streamMap[c.streamIdentifier]
 		if !ok {
 			streamMap[c.streamIdentifier] = c.streamSequenceNumber
-		} else {
+		} else if sna16LT(ssn, c.streamSequenceNumber) {
 			// to report only once with greatest SSN
-			if sna16LT(ssn, c.streamSequenceNumber) {
-				streamMap[c.streamIdentifier] = c.streamSequenceNumber
-			}
+			streamMap[c.streamIdentifier] = c.streamSequenceNumber
 		}
 	}
 
@@ -1648,7 +1664,7 @@ func (a *Association) handleForwardTSN(c *chunkForwardTSN) []*packet {
 	// from the reassemblyQueue.
 	for _, forwarded := range c.streams {
 		if s, ok := a.streams[forwarded.identifier]; ok {
-			s.handleForwardTSNForOrdered(c.newCumulativeTSN, forwarded.sequence)
+			s.handleForwardTSNForOrdered(forwarded.sequence)
 		}
 	}
 
@@ -1690,7 +1706,6 @@ func (a *Association) sendResetRequest(streamIdentifier uint16) error {
 
 // The caller should hold the lock.
 func (a *Association) handleReconfigParam(raw param) (*packet, error) {
-	// TODO: Check RSN
 	switch p := raw.(type) {
 	case *paramOutgoingResetRequest:
 		a.reconfigRequests[p.reconfigRequestSequenceNumber] = p
@@ -1759,8 +1774,8 @@ func (a *Association) movePendingDataChunkToInflightQueue(c *chunkPayloadData) {
 
 	a.checkPartialReliabilityStatus(c)
 
-	a.log.Tracef("[%s] sending tsn=%d ssn=%d sent=%d len=%d (%v,%v)",
-		a.name, c.tsn, c.streamSequenceNumber, c.nSent, len(c.userData), c.beginningFragment, c.endingFragment)
+	a.log.Tracef("[%s] sending ppi=%d tsn=%d ssn=%d sent=%d len=%d (%v,%v)",
+		a.name, c.payloadType, c.tsn, c.streamSequenceNumber, c.nSent, len(c.userData), c.beginningFragment, c.endingFragment)
 
 	// Push it into the inflightQueue
 	a.inflightQueue.pushNoCheck(c)
@@ -1884,19 +1899,28 @@ func (a *Association) checkPartialReliabilityStatus(c *chunkPayloadData) {
 		return
 	}
 
+	// draft-ietf-rtcweb-data-protocol-09.txt section 6
+	//	6.  Procedures
+	//		All Data Channel Establishment Protocol messages MUST be sent using
+	//		ordered delivery and reliable transmission.
+	//
+	if c.payloadType == PayloadTypeWebRTCDCEP {
+		return
+	}
+
 	// PR-SCTP
 	if s, ok := a.streams[c.streamIdentifier]; ok {
 		s.lock.RLock()
 		if s.reliabilityType == ReliabilityTypeRexmit {
 			if c.nSent >= s.reliabilityValue {
 				c.setAbandoned(true)
-				a.log.Tracef("[%s] marked as abandoned: tsn=%d (remix: %d)", a.name, c.tsn, c.nSent)
+				a.log.Tracef("[%s] marked as abandoned: tsn=%d ppi=%d (remix: %d)", a.name, c.tsn, c.payloadType, c.nSent)
 			}
 		} else if s.reliabilityType == ReliabilityTypeTimed {
 			elapsed := int64(time.Since(c.since).Seconds() * 1000)
 			if elapsed >= int64(s.reliabilityValue) {
 				c.setAbandoned(true)
-				a.log.Tracef("[%s] marked as abandoned: tsn=%d (timed: %d)", a.name, c.tsn, elapsed)
+				a.log.Tracef("[%s] marked as abandoned: tsn=%d ppi=%d (timed: %d)", a.name, c.tsn, c.payloadType, elapsed)
 			}
 		}
 		s.lock.RUnlock()
@@ -1977,7 +2001,7 @@ func pack(p *packet) []*packet {
 	return []*packet{p}
 }
 
-func (a *Association) handleChunkStart(p *packet) {
+func (a *Association) handleChunkStart() {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
@@ -1985,7 +2009,7 @@ func (a *Association) handleChunkStart(p *packet) {
 	a.immediateAckTriggered = false
 }
 
-func (a *Association) handleChunkEnd(p *packet) {
+func (a *Association) handleChunkEnd() {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
@@ -2025,7 +2049,7 @@ func (a *Association) handleChunk(p *packet, c chunk) error {
 		for _, e := range c.errorCauses {
 			errStr += fmt.Sprintf("(%s)", e)
 		}
-		return fmt.Errorf("[%s] Abort chunk, with following errors: %s", a.name, errStr)
+		return fmt.Errorf("[%s] %w: %s", a.name, errChunk, errStr)
 
 	case *chunkError:
 		var errStr string
@@ -2041,7 +2065,7 @@ func (a *Association) handleChunk(p *packet, c chunk) error {
 		packets = a.handleCookieEcho(c)
 
 	case *chunkCookieAck:
-		packets = a.handleCookieAck()
+		a.handleCookieAck()
 
 	case *chunkPayloadData:
 		packets = a.handleData(c)
@@ -2204,4 +2228,14 @@ func (a *Association) bufferedAmount() int {
 	defer a.lock.RUnlock()
 
 	return a.pendingQueue.getNumBytes() + a.inflightQueue.getNumBytes()
+}
+
+// MaxMessageSize returns the maximum message size you can send.
+func (a *Association) MaxMessageSize() uint32 {
+	return atomic.LoadUint32(&a.maxMessageSize)
+}
+
+// SetMaxMessageSize sets the maximum message size you can send.
+func (a *Association) SetMaxMessageSize(maxMsgSize uint32) {
+	atomic.StoreUint32(&a.maxMessageSize, maxMsgSize)
 }
