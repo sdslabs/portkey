@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/url"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/pion/webrtc/v3"
 	"github.com/sdslabs/portkey/pkg/utils"
 )
@@ -23,6 +25,9 @@ func SignalExchange(localSignal, remoteSignal *Signal) error {
 	if err != nil {
 		return err
 	}
+
+	log.Infoln("Requesting a key...")
+
 	resp, err := http.PostForm(serverURL, url.Values{
 		"connParams": {connParams},
 	})
@@ -39,6 +44,7 @@ func SignalExchange(localSignal, remoteSignal *Signal) error {
 	key := string(body)
 	fmt.Printf("Your Portkey: %s\n", key)
 
+	log.Infoln("Waiting for peer...")
 	resp, err = http.PostForm((serverURL + "wait"), url.Values{
 		"key": {key},
 	})
@@ -61,6 +67,9 @@ func SignalExchangeWithKey(localSignal, remoteSignal *Signal, key string) error 
 	if err != nil {
 		return err
 	}
+
+	log.Infoln("Sending key to signalling server...")
+
 	resp, err := http.PostForm((serverURL + "key"), url.Values{
 		"key":        {key},
 		"connParams": {connParams},
