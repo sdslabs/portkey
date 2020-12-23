@@ -28,17 +28,39 @@ func Connect(key string, sendPath string, receive bool, receivePath string, doBe
 		log.Fatal(err)
 	}
 
+	log.Infoln("Constructing ICE transport...")
 	ice := api.NewICETransport(gatherer)
 
+	log.Infoln("Constructing Quic transport...")
 	qt, err := api.NewQUICTransport(ice, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	receiveErr := make(chan error)
+	if receive {
+		wg.Add(1)
+		qt.OnBidirectionalStream(func(stream *quic.BidirectionalStream) {
+			log.Infof("New stream received: streamid = %d\n", stream.StreamID())
+			go session.ReadLoop(stream, receivePath, receiveErr, &wg)
+		})
+		log.Infoln("Deployed incoming stream handler")
+	}
+
+	gatherFinished := make(chan struct{})
+	gatherer.OnLocalCandidate(func(i *webrtc.ICECandidate) {
+		if i == nil {
+			close(gatherFinished)
+		}
+	})
+
+	log.Infoln("Gathering ICE candidates...")
 	err = gatherer.Gather()
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	<-gatherFinished
 
 	iceCandidates, err := gatherer.GetLocalCandidates()
 	if err != nil {
@@ -53,15 +75,6 @@ func Connect(key string, sendPath string, receive bool, receivePath string, doBe
 	quicParams, err := qt.GetLocalParameters()
 	if err != nil {
 		log.Fatal(err)
-	}
-
-	receiveErr := make(chan error)
-	if receive {
-		wg.Add(1)
-		qt.OnBidirectionalStream(func(stream *quic.BidirectionalStream) {
-			log.Infof("New stream received: streamid = %d\n", stream.StreamID())
-			go session.ReadLoop(stream, receivePath, receiveErr, &wg)
-		})
 	}
 
 	s := signal.Signal{
@@ -80,6 +93,9 @@ func Connect(key string, sendPath string, receive bool, receivePath string, doBe
 	if err != nil {
 		log.WithError(err).Fatalln("Unable to exchange signal")
 	}
+
+	log.Infoln("ICE candidates exchange successful")
+	
 	iceRole := webrtc.ICERoleControlled
 	if isOffer {
 		iceRole = webrtc.ICERoleControlling
@@ -90,17 +106,20 @@ func Connect(key string, sendPath string, receive bool, receivePath string, doBe
 		log.Fatal(err)
 	}
 
+	log.Infoln("Starting ICE transport...")
 	err = ice.Start(nil, remoteSignal.ICEParameters, &iceRole)
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	log.Infoln("Starting Quic transport...")
 	err = qt.Start(remoteSignal.QuicParameters)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	log.Info("Connection established")
+	log.Infoln("------------Connection established------------")
+	
 	if doBenchmarking {
 		if err = benchmark.StartTransfer(isOffer); err != nil {
 			log.WithError(err).Errorln("Error in starting benchmarking")
@@ -124,4 +143,14 @@ func Connect(key string, sendPath string, receive bool, receivePath string, doBe
 	}
 
 	wg.Wait()
+
+	log.Infoln("Closing Quic transport...")
+	if err = qt.Stop(quic.TransportStopInfo{}); err != nil {
+		log.Fatal(err)
+	}
+
+	log.Infoln("Closing ICE transport...")
+	if err = ice.Stop(); err != nil {
+		log.Fatal(err)
+	}
 }
