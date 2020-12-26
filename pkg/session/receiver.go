@@ -13,72 +13,45 @@ import (
 	"github.com/sdslabs/portkey/pkg/utils"
 )
 
-const receiveBufferSize = 100
-
 func ReadLoop(stream *quic.BidirectionalStream, receivePath string, receiveErr chan error, wg *sync.WaitGroup) error {
 	defer wg.Done()
 
+	quicgoStream := stream.Detach()
+
 	tempfile, err := ioutil.TempFile(os.TempDir(), "portkey*")
 	if err != nil {
-		log.WithError(err).Errorf("Error in tempfile creation in receiver stream: stream id = %d\n", stream.StreamID())
+		log.WithError(err).Errorf("Error in tempfile creation in receiver stream %d\n", quicgoStream.StreamID())
 		return err
 	}
 	defer os.Remove(tempfile.Name())
 
-	receiveBuffer := make([]byte, receiveBufferSize)
-	pipeReader, pipeWriter := io.Pipe()
-	zstdReader := zstd.NewReader(pipeReader)
-	readLoopErrChannel := make(chan error)
-
-	go func() {
-		defer pipeReader.Close()
-		defer zstdReader.Close()
-		_, err = io.Copy(tempfile, zstdReader)
-		readLoopErrChannel <- err
-	}()
-
-	for {
-		params, err := stream.ReadInto(receiveBuffer)
-		if err != nil {
-			if err != io.EOF {
-				log.WithError(err).Errorf("Error in reading into buffer in receiver stream: stream id = %d\n", stream.StreamID())
-				return err
-			}
-		}
-
-		log.Infof("Read %d bytes from stream %d\n", params.Amount, stream.StreamID())
-
-		_, err = pipeWriter.Write(receiveBuffer[:params.Amount])
-		if err != nil {
-			log.WithError(err).Errorf("Error in writing to compressed buffer in receiver stream: stream id = %d\n", stream.StreamID())
-			return err
-		}
-
-		if params.Finished {
-			pipeWriter.Close()
-			break
-		}
+	zstdReader := zstd.NewReader(quicgoStream)
+	bytesWritten, err := io.Copy(tempfile, zstdReader)
+	if err != nil {
+		log.WithError(err).Errorf("Error in copying from zstdReader to tempfile in receiver stream %d\n", quicgoStream.StreamID())
 	}
-
-	if err = <-readLoopErrChannel; err != nil {
-		log.WithError(err).Errorf("Error in reading to tempfile in receiver stream: stream id = %d\n", stream.StreamID())
-		return err
+	if err = zstdReader.Close(); err != nil {
+		log.WithError(err).Errorf("Error in closing zstdWriter in receiver stream %d\n", quicgoStream.StreamID())
 	}
+	if err = quicgoStream.Close(); err != nil {
+		log.WithError(err).Errorf("Error in closing stream %d\n", quicgoStream.StreamID())
+	}
+	log.Infof("Copied %d bytes from zstdReader to tempfile in receiver stream %d", bytesWritten, quicgoStream.StreamID())
+	log.Infof("Finished reading from stream %d\n", quicgoStream.StreamID())
 
+	log.Infof("Untaring received file in receiver stream %d ...", quicgoStream.StreamID())
 	if receivePath == "" {
 		receivePath, err = os.Getwd()
 		if err != nil {
-			log.WithError(err).Errorf("Error in finding working directory in receiver stream: stream id = %d\n", stream.StreamID())
+			log.WithError(err).Errorf("Error in finding working directory in receiver stream %d\n", quicgoStream.StreamID())
 			return err
 		}
 	}
 
 	err = utils.Untar(tempfile, receivePath)
 	if err != nil {
-		log.WithError(err).Errorf("Error in untaring file in receiver stream: stream id = %d\n", stream.StreamID())
+		log.WithError(err).Errorf("Error in untaring file in receiver stream %d\n", quicgoStream.StreamID())
 		return err
 	}
-
-	log.Infof("Finished reading from Stream %d\n", stream.StreamID())
 	return nil
 }

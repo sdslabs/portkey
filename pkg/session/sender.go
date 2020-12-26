@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bytes"
 	"io"
 	"io/ioutil"
 	"os"
@@ -13,85 +14,48 @@ import (
 	"github.com/sdslabs/portkey/pkg/utils"
 )
 
-const sendBufferSize = 100
-
 func WriteLoop(stream *quic.BidirectionalStream, sendPath string, sendErr chan error, wg *sync.WaitGroup) error {
 	defer wg.Done()
 
+	quicgoStream := stream.Detach()
+
 	tempfile, err := ioutil.TempFile(os.TempDir(), "portkey*")
 	if err != nil {
-		log.WithError(err).Errorf("Error in tempfile creation in sender stream: stream id = %d\n", stream.StreamID())
+		log.WithError(err).Errorf("Error in tempfile creation in sender stream %d\n", quicgoStream.StreamID())
 		return err
 	}
 	defer os.Remove(tempfile.Name())
 
 	err = utils.Tar(sendPath, tempfile)
 	if err != nil {
-		log.WithError(err).Errorf("Error in making tarball in sender stream: stream id = %d\n", stream.StreamID())
+		log.WithError(err).Errorf("Error in making tarball in sender stream %d\n", quicgoStream.StreamID())
 		return err
 	}
 
 	if _, err = tempfile.Seek(0, 0); err != nil {
-		log.WithError(err).Errorf("Error in going to tempfile start in sender stream: stream id = %d\n", stream.StreamID())
+		log.WithError(err).Errorf("Error in going to tempfile start in sender stream %d\n", quicgoStream.StreamID())
 		return err
 	}
 
-	var originalSize, compressedSize int64
-
-	fs, err := tempfile.Stat()
+	zstdWriter := zstd.NewWriter(quicgoStream)
+	bytesWritten, err := io.Copy(zstdWriter, tempfile)
 	if err != nil {
-		log.WithError(err).Errorf("Error in getting stat of tempfile in sender stream: stream id = %d\n", stream.StreamID())
-		return err
+		log.WithError(err).Errorf("Error in copying from tempfile to zstdWriter in sender stream %d\n", quicgoStream.StreamID())
+	}
+	log.Infof("Copied %d bytes from tempfile to zstdWriter in sender stream %d\n", bytesWritten, quicgoStream.StreamID())
+	if err = zstdWriter.Close(); err != nil {
+		log.WithError(err).Errorf("Error in closing zstdWriter in sender stream %d\n", quicgoStream.StreamID())
+	}
+	if err = quicgoStream.Close(); err != nil {
+		log.WithError(err).Errorf("Error in closing sender stream %d", quicgoStream.StreamID())
 	}
 
-	originalSize = fs.Size()
+	log.Infoln("Waiting for peer to close stream...")
 
-	finished := false
-	sendBuffer := make([]byte, sendBufferSize)
-	pipeReader, pipeWriter := io.Pipe()
-	defer pipeReader.Close()
-	zstdWriter := zstd.NewWriter(pipeWriter)
-
-	go func() {
-		defer pipeWriter.Close()
-		defer zstdWriter.Close()
-		_, err = io.Copy(zstdWriter, tempfile)
-		if err != nil {
-			log.WithError(err).Errorf("Error in writing to tempfile in sender stream: stream id = %d\n", stream.StreamID())
-		}
-	}()
-
-	compressedSize = 0
-	for {
-		bytesRead, err := pipeReader.Read(sendBuffer)
-		if err != nil {
-			if err == io.EOF {
-				finished = true
-			} else {
-				log.WithError(err).Errorf("Error in writing sendBuffer in sender stream: stream id = %d\n", stream.StreamID())
-				return err
-			}
-		}
-
-		data := quic.StreamWriteParameters{
-			Data:     sendBuffer[:bytesRead],
-			Finished: finished,
-		}
-		compressedSize += int64(bytesRead)
-
-		err = stream.Write(data)
-		if err != nil {
-			log.WithError(err).Errorf("Error in writing to sender stream: stream id = %d\n", stream.StreamID())
-			return err
-		}
-
-		log.Infof("Wrote %d bytes to stream %d\n", bytesRead, stream.StreamID())
-
-		if finished {
-			log.Infof("Finished writing to stream %d\n", stream.StreamID())
-			log.Infof("Original file size: %d bytes\n", originalSize)
-			log.Infof("Compressed file size: %d bytes\n", compressedSize)
-			return nil
-		}
+	var dummyBuffer bytes.Buffer
+	_, err = io.Copy(&dummyBuffer, quicgoStream)
+	if err != nil {
+		log.WithError(err).Infof("Unexpected behaviour in sender stream %d: Received error other than EOF from peer", quicgoStream.StreamID())
 	}
+	return nil
 }
