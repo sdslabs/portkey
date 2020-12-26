@@ -95,7 +95,7 @@ func Connect(key string, sendPath string, receive bool, receivePath string, doBe
 	}
 
 	log.Infoln("ICE candidates exchange successful")
-	
+
 	iceRole := webrtc.ICERoleControlled
 	if isOffer {
 		iceRole = webrtc.ICERoleControlling
@@ -119,7 +119,7 @@ func Connect(key string, sendPath string, receive bool, receivePath string, doBe
 	}
 
 	log.Infoln("------------Connection established------------")
-	
+
 	if doBenchmarking {
 		if err = benchmark.StartTransfer(isOffer); err != nil {
 			log.WithError(err).Errorln("Error in starting benchmarking")
