@@ -13,7 +13,7 @@ import (
 	"github.com/sdslabs/portkey/pkg/utils"
 )
 
-func ReadLoop(stream *quic.BidirectionalStream, receivePath string, receiveErr chan error, wg *sync.WaitGroup) error {
+func ReadLoop(stream *quic.BidirectionalStream, receivePath string, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	quicgoStream := stream.Detach()
@@ -21,7 +21,7 @@ func ReadLoop(stream *quic.BidirectionalStream, receivePath string, receiveErr c
 	tempfile, err := ioutil.TempFile(os.TempDir(), "portkey*")
 	if err != nil {
 		log.WithError(err).Errorf("Error in tempfile creation in receiver stream %d\n", quicgoStream.StreamID())
-		return err
+		return
 	}
 	defer os.Remove(tempfile.Name())
 
@@ -30,13 +30,14 @@ func ReadLoop(stream *quic.BidirectionalStream, receivePath string, receiveErr c
 	if err != nil {
 		log.WithError(err).Errorf("Error in copying from zstdReader to tempfile in receiver stream %d\n", quicgoStream.StreamID())
 	}
+	log.Infof("Copied %d bytes from zstdReader to tempfile in receiver stream %d", bytesWritten, quicgoStream.StreamID())
+
 	if err = zstdReader.Close(); err != nil {
 		log.WithError(err).Errorf("Error in closing zstdWriter in receiver stream %d\n", quicgoStream.StreamID())
 	}
 	if err = quicgoStream.Close(); err != nil {
 		log.WithError(err).Errorf("Error in closing stream %d\n", quicgoStream.StreamID())
 	}
-	log.Infof("Copied %d bytes from zstdReader to tempfile in receiver stream %d", bytesWritten, quicgoStream.StreamID())
 	log.Infof("Finished reading from stream %d\n", quicgoStream.StreamID())
 
 	log.Infof("Untaring received file in receiver stream %d ...", quicgoStream.StreamID())
@@ -44,14 +45,12 @@ func ReadLoop(stream *quic.BidirectionalStream, receivePath string, receiveErr c
 		receivePath, err = os.Getwd()
 		if err != nil {
 			log.WithError(err).Errorf("Error in finding working directory in receiver stream %d\n", quicgoStream.StreamID())
-			return err
+			return
 		}
 	}
 
 	err = utils.Untar(tempfile, receivePath)
 	if err != nil {
 		log.WithError(err).Errorf("Error in untaring file in receiver stream %d\n", quicgoStream.StreamID())
-		return err
 	}
-	return nil
 }

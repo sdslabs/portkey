@@ -37,12 +37,11 @@ func Connect(key string, sendPath string, receive bool, receivePath string, doBe
 		log.Fatal(err)
 	}
 
-	receiveErr := make(chan error)
 	if receive {
 		wg.Add(1)
 		qt.OnBidirectionalStream(func(stream *quic.BidirectionalStream) {
 			log.Infof("New stream received: streamid = %d\n", stream.StreamID())
-			go session.ReadLoop(stream, receivePath, receiveErr, &wg)
+			go session.ReadLoop(stream, receivePath, &wg)
 		})
 		log.Infoln("Deployed incoming stream handler")
 	}
@@ -131,7 +130,6 @@ func Connect(key string, sendPath string, receive bool, receivePath string, doBe
 		}()
 	}
 
-	sendErr := make(chan error)
 	if sendPath != "" {
 		stream, err := qt.CreateBidirectionalStream()
 		if err != nil {
@@ -139,7 +137,7 @@ func Connect(key string, sendPath string, receive bool, receivePath string, doBe
 		}
 		log.Infof("New stream created: streamid = %d\n", stream.StreamID())
 		wg.Add(1)
-		go session.WriteLoop(stream, sendPath, sendErr, &wg)
+		go session.WriteLoop(stream, sendPath, &wg)
 	}
 
 	wg.Wait()
