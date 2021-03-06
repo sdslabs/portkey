@@ -8,6 +8,7 @@ import (
 	"strings"
 )
 
+// Tar takes the source for the folder/file and archives them.
 func Tar(source string, tarfile *os.File) error {
 	tarball := tar.NewWriter(tarfile)
 	defer tarball.Close()
@@ -54,6 +55,7 @@ func Tar(source string, tarfile *os.File) error {
 		})
 }
 
+//Untar takes the tarball and extracts all the files.
 func Untar(tarball *os.File, target string) error {
 	reader, err := os.Open(tarball.Name())
 	if err != nil {
