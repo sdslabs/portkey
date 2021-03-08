@@ -1,6 +1,8 @@
 package connection
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"sync"
 
 	"github.com/pion/quic"
@@ -15,7 +17,7 @@ import (
 var wg sync.WaitGroup
 var stunServers []string = []string{"stun:stun.l.google.com:19302"}
 
-func Connect(key string, sendPath string, receive bool, receivePath string, doBenchmarking bool) {
+func Connect(key string, sendPath string, receive bool, receivePath string, certPath string, privateKeyPath string, doBenchmarking bool) {
 	isOffer := (key == "")
 	api := webrtc.NewAPI()
 	iceOptions := webrtc.ICEGatherOptions{
@@ -28,11 +30,26 @@ func Connect(key string, sendPath string, receive bool, receivePath string, doBe
 		log.Fatal(err)
 	}
 
+	var certificates []webrtc.Certificate = nil
+	if certPath != "" {
+		tlsCert, err := tls.LoadX509KeyPair(certPath, privateKeyPath)
+		if err != nil {
+			log.WithError(err).Fatal("Error in parsing certificate")
+		}
+		privateKey := tlsCert.PrivateKey
+		x509Cert, err := x509.ParseCertificate(tlsCert.Certificate[0])
+		if err != nil {
+			log.WithError(err).Fatal("Error in parsing to x509 certificate")
+		}
+
+		certificates = append(certificates, webrtc.CertificateFromX509(privateKey, x509Cert))
+	}
+
 	log.Infoln("Constructing ICE transport...")
 	ice := api.NewICETransport(gatherer)
 
 	log.Infoln("Constructing Quic transport...")
-	qt, err := api.NewQUICTransport(ice, nil)
+	qt, err := api.NewQUICTransport(ice, certificates)
 	if err != nil {
 		log.Fatal(err)
 	}
