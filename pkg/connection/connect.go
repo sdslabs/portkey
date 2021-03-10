@@ -15,7 +15,11 @@ import (
 )
 
 var wg sync.WaitGroup
-var stunServers []string = []string{"stun:stun.l.google.com:19302"}
+var stunServers []string = []string{"stun:stun.l.google.com:19302",
+	"stun:stun1.l.google.com:19302",
+	"stun:stun2.l.google.com:19302",
+	"stun:stun3.l.google.com:19302",
+	"stun:stun4.l.google.com:19302"}
 
 func Connect(key string, sendPath string, receive bool, receivePath string, certPath string, privateKeyPath string, doBenchmarking bool) {
 	isOffer := (key == "")
