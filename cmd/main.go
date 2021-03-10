@@ -1,11 +1,11 @@
 package main
 
 import (
-	log "github.com/sirupsen/logrus"
+	"os"
 )
 
 func main() {
 	if err := rootCmd.Execute(); err != nil {
-		log.Fatal(err)
+		os.Exit(1)
 	}
 }

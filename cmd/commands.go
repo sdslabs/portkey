@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sdslabs/portkey/pkg/connection"
+	"github.com/sdslabs/portkey/pkg/utils"
 )
 
 var (
@@ -24,6 +25,9 @@ var rootCmd = &cobra.Command{
 	Use:   "portkey",
 	Short: "Portkey is a p2p file transfer tool.",
 	Long:  `Portkey is a p2p file transfer tool that uses ORTC p2p API over QUIC protocol to achieve very fast file transfer speeds`,
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		return utils.Validate(key, sendPath, receive, receivePath, certPath, privateKeyPath, doBenchmarking)
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		connection.Connect(key, sendPath, receive, receivePath, certPath, privateKeyPath, doBenchmarking)
 	},
