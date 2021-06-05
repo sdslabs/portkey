@@ -106,9 +106,9 @@ func Connect(key string, sendPath string, receive bool, receivePath string, cert
 	remoteSignal := signal.Signal{}
 
 	if isOffer {
-		err = signal.SignalExchange(&s, &remoteSignal)
+		err = signal.Exchange(&s, &remoteSignal)
 	} else {
-		err = signal.SignalExchangeWithKey(&s, &remoteSignal, key)
+		err = signal.ExchangeWithKey(&s, &remoteSignal, key)
 	}
 	if err != nil {
 		log.WithError(err).Fatalln("Unable to exchange signal")

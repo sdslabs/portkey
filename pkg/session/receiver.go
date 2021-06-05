@@ -13,6 +13,8 @@ import (
 	"github.com/sdslabs/portkey/pkg/utils"
 )
 
+// ReadLoop reads the data from the bidirectional stream and calls function for
+// decompressing and untarring the files.
 func ReadLoop(stream *quic.BidirectionalStream, receivePath string, wg *sync.WaitGroup) {
 	defer wg.Done()
 

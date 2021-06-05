@@ -14,6 +14,8 @@ import (
 	"github.com/sdslabs/portkey/pkg/utils"
 )
 
+// WriteLoop writes the data on the bidirectional stream after tarring and compressing
+// it.
 func WriteLoop(stream *quic.BidirectionalStream, sendPath string, wg *sync.WaitGroup) {
 	defer wg.Done()
 
@@ -26,6 +28,7 @@ func WriteLoop(stream *quic.BidirectionalStream, sendPath string, wg *sync.WaitG
 	}
 	defer os.Remove(tempfile.Name())
 
+	// Archiving the file(s).
 	err = utils.Tar(sendPath, tempfile)
 	if err != nil {
 		log.WithError(err).Errorf("Error in making tarball in sender stream %d\n", quicgoStream.StreamID())
@@ -37,6 +40,7 @@ func WriteLoop(stream *quic.BidirectionalStream, sendPath string, wg *sync.WaitG
 		return
 	}
 
+	// Performing compression using zstd.
 	zstdWriter := zstd.NewWriter(quicgoStream)
 	bytesWritten, err := io.Copy(zstdWriter, tempfile)
 	if err != nil {

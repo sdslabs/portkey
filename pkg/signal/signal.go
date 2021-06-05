@@ -12,6 +12,7 @@ import (
 	"github.com/sdslabs/portkey/pkg/utils"
 )
 
+// Signal contains the information for sending a signal to server.
 type Signal struct {
 	ICECandidates  []webrtc.ICECandidate `json:"iceCandidates"`
 	ICEParameters  webrtc.ICEParameters  `json:"iceParameters"`
@@ -20,7 +21,8 @@ type Signal struct {
 
 var serverURL string = "https://portkey-server.herokuapp.com/"
 
-func SignalExchange(localSignal, remoteSignal *Signal) error {
+// Exchange signals server and generates a key for connection.
+func Exchange(localSignal, remoteSignal *Signal) error {
 	connParams, err := utils.Encode(localSignal)
 	if err != nil {
 		return err
@@ -41,6 +43,7 @@ func SignalExchange(localSignal, remoteSignal *Signal) error {
 	}
 	resp.Body.Close()
 
+	// Generating key for connection.
 	key := string(body)
 	fmt.Printf("Your Portkey: %s\n", key)
 
@@ -62,7 +65,8 @@ func SignalExchange(localSignal, remoteSignal *Signal) error {
 	return err
 }
 
-func SignalExchangeWithKey(localSignal, remoteSignal *Signal, key string) error {
+// ExchangeWithKey uses a key to signal server.
+func ExchangeWithKey(localSignal, remoteSignal *Signal, key string) error {
 	connParams, err := utils.Encode(localSignal)
 	if err != nil {
 		return err
