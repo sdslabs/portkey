@@ -18,7 +18,7 @@ type Signal struct {
 	QuicParameters webrtc.QUICParameters `json:"quicParameters"`
 }
 
-var serverURL string = "https://portkey-server.herokuapp.com/"
+var serverURL string = "https://portkeyserver.sdslabs.co/"
 
 func SignalExchange(localSignal, remoteSignal *Signal) error {
 	connParams, err := utils.Encode(localSignal)
@@ -39,24 +39,32 @@ func SignalExchange(localSignal, remoteSignal *Signal) error {
 	if err != nil {
 		return err
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf(string(body))
+	}
 
 	key := string(body)
 	fmt.Printf("Your Portkey: %s\n", key)
 
 	log.Infoln("Waiting for peer...")
-	resp, err = http.PostForm((serverURL + "wait"), url.Values{
+	resp2, err := http.PostForm((serverURL + "wait"), url.Values{
 		"key": {key},
 	})
 	if err != nil {
 		return err
 	}
 
-	body, err = ioutil.ReadAll(resp.Body)
+	body, err = ioutil.ReadAll(resp2.Body)
 	if err != nil {
 		return err
 	}
-	resp.Body.Close()
+	defer resp2.Body.Close()
+
+	if resp2.StatusCode != http.StatusOK {
+		return fmt.Errorf(string(body))
+	}
 
 	err = utils.Decode(string(body), remoteSignal)
 	return err
@@ -82,7 +90,11 @@ func SignalExchangeWithKey(localSignal, remoteSignal *Signal, key string) error 
 	if err != nil {
 		return err
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf(string(body))
+	}
 
 	err = utils.Decode(string(body), remoteSignal)
 	return err
