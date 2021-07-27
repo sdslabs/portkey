@@ -2,7 +2,9 @@ package srtp
 
 import (
 	"errors"
+	"io"
 	"sync"
+	"time"
 
 	"github.com/pion/rtcp"
 	"github.com/pion/transport/packetio"
@@ -21,7 +23,7 @@ type ReadStreamSRTCP struct {
 	session *SessionSRTCP
 	ssrc    uint32
 
-	buffer *packetio.Buffer
+	buffer io.ReadWriteCloser
 }
 
 func (r *ReadStreamSRTCP) write(buf []byte) (n int, err error) {
@@ -59,6 +61,17 @@ func (r *ReadStreamSRTCP) ReadRTCP(buf []byte) (int, *rtcp.Header, error) {
 // Read reads and decrypts full RTCP packet from the nextConn
 func (r *ReadStreamSRTCP) Read(buf []byte) (int, error) {
 	return r.buffer.Read(buf)
+}
+
+// SetReadDeadline sets the deadline for the Read operation.
+// Setting to zero means no deadline.
+func (r *ReadStreamSRTCP) SetReadDeadline(t time.Time) error {
+	if b, ok := r.buffer.(interface {
+		SetReadDeadline(time.Time) error
+	}); ok {
+		return b.SetReadDeadline(t)
+	}
+	return nil
 }
 
 // Close removes the ReadStream from the session and cleans up any associated state
@@ -100,9 +113,14 @@ func (r *ReadStreamSRTCP) init(child streamSession, ssrc uint32) error {
 	r.isInited = true
 	r.isClosed = make(chan bool)
 
-	// Create a buffer and limit it to 100KB
-	r.buffer = packetio.NewBuffer()
-	r.buffer.SetLimitSize(srtcpBufferSize)
+	if r.session.bufferFactory != nil {
+		r.buffer = r.session.bufferFactory(packetio.RTCPBufferPacket, ssrc)
+	} else {
+		// Create a buffer and limit it to 100KB
+		buff := packetio.NewBuffer()
+		buff.SetLimitSize(srtcpBufferSize)
+		r.buffer = buff
+	}
 
 	return nil
 }
@@ -130,4 +148,10 @@ func (w *WriteStreamSRTCP) WriteRTCP(header *rtcp.Header, payload []byte) (int, 
 // Write encrypts and writes a full RTCP packets to the nextConn
 func (w *WriteStreamSRTCP) Write(b []byte) (int, error) {
 	return w.session.write(b)
+}
+
+// SetWriteDeadline sets the deadline for the Write operation.
+// Setting to zero means no deadline.
+func (w *WriteStreamSRTCP) SetWriteDeadline(t time.Time) error {
+	return w.session.setWriteDeadline(t)
 }

@@ -1,5 +1,3 @@
-// +build !js
-
 package interceptor
 
 // Chain is an interceptor that runs all child interceptors in order.
@@ -70,9 +68,7 @@ func (i *Chain) UnbindRemoteStream(ctx *StreamInfo) {
 func (i *Chain) Close() error {
 	var errs []error
 	for _, interceptor := range i.interceptors {
-		if err := interceptor.Close(); err != nil {
-			errs = append(errs, err)
-		}
+		errs = append(errs, interceptor.Close())
 	}
 
 	return flattenErrs(errs)

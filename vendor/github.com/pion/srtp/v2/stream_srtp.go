@@ -2,7 +2,9 @@ package srtp
 
 import (
 	"errors"
+	"io"
 	"sync"
+	"time"
 
 	"github.com/pion/rtp"
 	"github.com/pion/transport/packetio"
@@ -21,7 +23,7 @@ type ReadStreamSRTP struct {
 	session *SessionSRTP
 	ssrc    uint32
 
-	buffer *packetio.Buffer
+	buffer io.ReadWriteCloser
 }
 
 // Used by getOrCreateReadStream
@@ -47,8 +49,13 @@ func (r *ReadStreamSRTP) init(child streamSession, ssrc uint32) error {
 	r.isClosed = make(chan bool)
 
 	// Create a buffer with a 1MB limit
-	r.buffer = packetio.NewBuffer()
-	r.buffer.SetLimitSize(srtpBufferSize)
+	if r.session.bufferFactory != nil {
+		r.buffer = r.session.bufferFactory(packetio.RTPBufferPacket, ssrc)
+	} else {
+		buff := packetio.NewBuffer()
+		buff.SetLimitSize(srtpBufferSize)
+		r.buffer = buff
+	}
 
 	return nil
 }
@@ -84,6 +91,17 @@ func (r *ReadStreamSRTP) ReadRTP(buf []byte) (int, *rtp.Header, error) {
 	}
 
 	return n, header, nil
+}
+
+// SetReadDeadline sets the deadline for the Read operation.
+// Setting to zero means no deadline.
+func (r *ReadStreamSRTP) SetReadDeadline(t time.Time) error {
+	if b, ok := r.buffer.(interface {
+		SetReadDeadline(time.Time) error
+	}); ok {
+		return b.SetReadDeadline(t)
+	}
+	return nil
 }
 
 // Close removes the ReadStream from the session and cleans up any associated state
@@ -127,4 +145,10 @@ func (w *WriteStreamSRTP) WriteRTP(header *rtp.Header, payload []byte) (int, err
 // Write encrypts and writes a full RTP packets to the nextConn
 func (w *WriteStreamSRTP) Write(b []byte) (int, error) {
 	return w.session.write(b)
+}
+
+// SetWriteDeadline sets the deadline for the Write operation.
+// Setting to zero means no deadline.
+func (w *WriteStreamSRTP) SetWriteDeadline(t time.Time) error {
+	return w.session.setWriteDeadline(t)
 }
