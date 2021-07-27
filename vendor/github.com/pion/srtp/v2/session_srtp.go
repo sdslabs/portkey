@@ -2,6 +2,7 @@ package srtp
 
 import (
 	"net"
+	"time"
 
 	"github.com/pion/logging"
 	"github.com/pion/rtp"
@@ -52,6 +53,7 @@ func NewSessionSRTP(conn net.Conn, config *Config) (*SessionSRTP, error) { //nol
 			newStream:     make(chan readStream),
 			started:       make(chan interface{}),
 			closed:        make(chan interface{}),
+			bufferFactory: config.BufferFactory,
 			log:           loggerFactory.NewLogger("srtp"),
 		},
 	}
@@ -131,6 +133,10 @@ func (s *SessionSRTP) writeRTP(header *rtp.Header, payload []byte) (int, error) 
 	}
 
 	return s.session.nextConn.Write(encrypted)
+}
+
+func (s *SessionSRTP) setWriteDeadline(t time.Time) error {
+	return s.session.nextConn.SetWriteDeadline(t)
 }
 
 func (s *SessionSRTP) decrypt(buf []byte) error {
